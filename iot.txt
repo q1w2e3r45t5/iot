@@ -1,0 +1,324 @@
+exp-7 temp
+open thingspeak login
+create new channel with any name
+copy channel id and write api key(under api key tab)
+note down hotspot name and pass
+put channel id api key and name pass in the code
+connection
+vcc to 3.3v
+gnd to gnd
+datapin to gpio 23
+library dht sensor library,thingspeak
+code:
+#include <WiFi.h>
+#include <DHT.h>
+#include <ThingSpeak.h>
+
+const char* ssid = "YOUR_NETWORK_NAME";
+const char* password = "NETWORK_PASSWORD";
+unsigned long myChannelNumber = YOUR_CHANNEL_ID;
+const char* myWriteAPIKey = "WRITE_API_KEY";
+
+#define DHTPIN 23
+#define DHTTYPE DHT11
+
+DHT dht(DHTPIN, DHTTYPE);
+WiFiClient client;
+
+void setup() {
+  Serial.begin(115200);
+  delay(3000);
+  dht.begin();
+  ThingSpeak.begin(client);
+
+  Serial.println("\n--- Initializing Library Integration Protocol ---");
+  WiFi.disconnect(true, true);
+  delay(1000);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  Serial.print("Connecting to network: ");
+  Serial.println(ssid);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+
+  Serial.println("\n Successfully Authenticated with Network!");
+  Serial.print("Assigned IP Address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    float temperature = dht.readTemperature();
+
+    if (isnan(temperature)) {
+      Serial.println(" Hardware Error: Check D23 data wire connection.");
+      delay(3000);
+      return;
+    }
+
+    Serial.print("\n Current Temperature: ");
+    Serial.print(temperature);
+    Serial.println(" °C");
+    Serial.println("Routing data payload to ThingSpeak cloud via core library...");
+
+    int responseCode = ThingSpeak.writeField(myChannelNumber, 1, temperature, myWriteAPIKey);
+
+    if (responseCode == 200)
+      Serial.println(" Cloud Update Verified! Dashboard graph updating successfully.");
+    else {
+      Serial.print(" Connection Blocked. ThingSpeak Error Code: ");
+      Serial.println(responseCode);
+      Serial.println("Note: If code is -301, Windows firewall is filtering outbound device packets.");
+    }
+  } else {
+    Serial.println(" Connection dropped. Re-authenticating...");
+    WiFi.begin(ssid, password);
+  }
+
+  Serial.println("Waiting 20 seconds for the next data push cycle...");
+  delay(20000);
+}
+
+exp-8 soil
+open firebase click create project and done
+in left side database&storage click realtime database
+Select a database location. Choose a nearby available Asian region.
+Click Next,Select Start in test mode,Click Enable.
+In the left sidebar security then Authentication.
+Click Get started,Open the Sign-in method tab.
+Find Anonymous under Native providers,Click Anonymous.
+Enable the toggle,Click Save.
+settings then general scroll down your apps click </> create
+name then register app copy api,url key done then replace api,url,name,pass in code
+Required Libraries-Firebase Arduino Client Library for ESP8266 and ESP32,WiFi.
+code:
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include "addons/TokenHelper.h"
+#include "addons/RTDBHelper.h"
+
+#define WIFI_SSID "duo"
+#define WIFI_PASSWORD "12345678"
+#define API_KEY "AIzaSyAaKwOp14HR1iQ2AmbsR7uaW5hTr9Uq79U"
+#define DATABASE_URL "https://iotlab-73556-default-rtdb.asia-southeast1.firebasedatabase.app"
+
+#define SOIL_PIN 32
+
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+bool signupOK = false;
+unsigned long lastTime = 0;
+
+void setup() {
+  Serial.begin(115200);
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to Wi-Fi");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWi-Fi Connected!");
+
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+
+  if (Firebase.signUp(&config, &auth, "", ""))
+    signupOK = true;
+
+  config.token_status_callback = tokenStatusCallback;
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+}
+
+void loop() {
+  if (Firebase.ready() && signupOK &&
+      (millis() - lastTime >= 5000 || lastTime == 0)) {
+
+    lastTime = millis();
+
+    int raw = analogRead(SOIL_PIN);
+    int moisture = constrain(map(raw, 3500, 1500, 0, 100), 0, 100);
+
+    Serial.print("Soil Moisture: ");
+    Serial.print(moisture);
+    Serial.println("%");
+
+    Firebase.RTDB.setInt(&fbdo, "/Live_Moisture", moisture);
+  }
+}
+exp 9: ultrasonic
+connection vcc-5v,gnd-gnd,trig-6,echo-5
+buzzer + to 4 ,gnd to gnd,led to resistor to 9,led gnd to gnd
+green led to resistor to 10,gnd to gnd
+code:
+
+int TRIG = 6;
+int ECHO = 5;
+int BUZZER = 4;
+int RED_LED = 9;
+int GREEN_LED = 10;
+int WARNING_DISTANCE = 50;
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(TRIG, OUTPUT);
+  pinMode(ECHO, INPUT);
+  pinMode(BUZZER, OUTPUT);
+  pinMode(RED_LED, OUTPUT);
+  pinMode(GREEN_LED, OUTPUT);
+
+  Serial.println("System Ready...");
+}
+
+void loop() {
+  digitalWrite(TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG, LOW);
+
+  long duration = pulseIn(ECHO, HIGH);
+  int distance = duration * 0.034 / 2;
+
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+
+  if (distance > 0 && distance <= WARNING_DISTANCE) {
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, LOW);
+    tone(BUZZER, 1000);
+    Serial.println("INTRUSION DETECTED");
+  } else {
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(GREEN_LED, HIGH);
+    noTone(BUZZER);
+    Serial.println("AREA SECURE");
+  }
+
+  delay(100);
+}
+
+exp 10: motor
+connection ENA to 5v,in1-5,in2-6,out1-dc motor ,out2 dc motor,gnd-gnd
+blue led + to resistor to 3,- to gnd
+red led + to resistor to 4,- to gnd
+switch terminal 1 to pin 2, terminal 2 to 5v
+
+code:
+
+int inputPin = 1;
+int bluePin = 3;
+int redPin = 4;
+int motorPin1 = 5;
+int motorPin2 = 6;
+
+int dir = LOW;
+int prevState = LOW;
+
+void setup() {
+  pinMode(inputPin, INPUT);
+  pinMode(bluePin, OUTPUT);
+  pinMode(redPin, OUTPUT);
+  pinMode(motorPin1, OUTPUT);
+  pinMode(motorPin2, OUTPUT);
+}
+
+void loop() {
+  int currentState = digitalRead(inputPin);
+
+  if (currentState == HIGH && prevState == LOW)
+    dir = !dir;
+
+  prevState = currentState;
+
+  if (dir == HIGH) {
+    digitalWrite(motorPin1, HIGH);
+    digitalWrite(motorPin2, LOW);
+    digitalWrite(bluePin, LOW);
+    digitalWrite(redPin, HIGH);
+  } else {
+    digitalWrite(motorPin1, LOW);
+    digitalWrite(motorPin2, HIGH);
+    digitalWrite(bluePin, HIGH);
+    digitalWrite(redPin, LOW);
+  }
+}
+
+exp 11:ultra sonic thingspeak
+login to  thingspeak
+HC-SR04 	ESP32
+VCC	        3.3V
+GND	 	GND
+TRIG		GPIO 5 (D5)
+ECHO		GPIO 18 (D18)
+if above connection doesn't work
+HC-SR04             ESP32
+VCC  -------------> 3.3V
+GND  -------------> GND
+TRIG -------------> GPIO 5
+ECHO ---> 1kΩ ----> GPIO 18
+                    |
+                   2kΩ
+                    |
+                   GND
+code:
+
+#include <WiFi.h>
+#include <ThingSpeak.h>
+
+const char* ssid = "YOUR_WIFI_NAME";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+unsigned long channelID = 1234567;
+const char* apiKey = "YOUR_WRITE_API_KEY";
+
+int trigPin = 5, echoPin = 18;
+WiFiClient client;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  ThingSpeak.begin(client);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) delay(1000);
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    digitalWrite(trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
+
+    long duration = pulseIn(echoPin, HIGH);
+
+    if (duration == 0) return;
+
+    float distance = duration * 0.0343 / 2;
+
+    Serial.print("Distance: ");
+    Serial.print(distance);
+    Serial.println(" cm");
+
+    ThingSpeak.writeField(channelID, 1, distance, apiKey);
+  } else {
+    WiFi.begin(ssid, password);
+  }
+
+  delay(20000);
+}
